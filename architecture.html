@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Architecture — Verity</title>
+<meta name="description" content="How Verity's pipeline works: the agent handoff, evaluation sandbox, container serving, and the limits it accepts.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+
+<header class="masthead">
+  <div class="masthead-inner">
+    <a class="wordmark" href="index.html">Verity</a>
+    <span class="tagline">Model registry</span>
+    <span class="masthead-meta">Hawkeye · Nat · Fury · Falcon</span>
+  </div>
+</header>
+
+<nav>
+  <div class="nav-inner">
+    <a href="index.html">Overview</a>
+    <a href="quickstart.html">Quickstart</a>
+    <a href="architecture.html" aria-current="page">Architecture</a>
+    <a href="api.html">API</a>
+  </div>
+</nav>
+
+<main class="page">
+  <p class="eyebrow">Architecture</p>
+  <h1>What happens between upload and serving.</h1>
+  <p class="lede">
+    One <code>/ingest</code> call runs the whole chain synchronously. Each stage writes
+    its evidence before the next begins, so a failure leaves an explanation behind rather
+    than a gap.
+  </p>
+
+  <h2>The pipeline</h2>
+  <pre><code>assemble(model, X_test=…, y_test=…)
+      │  multipart: artifact + fixture + descriptor
+      ▼
+POST /ingest
+      ├─ store artifact + fixture           → S3
+      ├─ Hawkeye: identify + introspect     → manifest row
+      ├─ Nat:     resolve → run → score     → eval_run row
+      ├─ Fury:    gate → register → archive → model_version row
+      ├─ Falcon:  configure monitoring      → monitoring_config row
+      └─ deploy:  build → run → healthcheck → deployment row</code></pre>
+
+  <h2>Status, and what moves it</h2>
+  <div class="table-scroll">
+    <table>
+      <tr><th>Status</th><th>Means</th></tr>
+      <tr><td><code>pending</code></td><td>Identified and stored, but no fixture was supplied so nothing was evaluated</td></tr>
+      <tr><td><code>staging_failed</code></td><td>Evaluated and missed at least one threshold — <code>failed_on</code> names which</td></tr>
+      <tr><td><code>production</code></td><td>Cleared every threshold and was promoted; this is the version the predict route resolves to</td></tr>
+      <tr><td><code>archived</code></td><td>Was in production until a newer version replaced it; keeps its own evidence</td></tr>
+    </table>
+  </div>
+
+  <h2>Evaluation is pluggable</h2>
+  <p>
+    Nat dispatches on the fixture's <code>kind</code> rather than knowing how to evaluate
+    anything itself. Only <code>labeled_holdout</code> is registered today; images, RAG
+    corpora, and RL rollouts each arrive as a new module plus a registry line, without
+    touching the ingest path or the row shape.
+  </p>
+  <p>
+    Resource metrics sit outside that: the sandbox harness measures latency, throughput,
+    memory, and CPU on <em>every</em> run regardless of mechanism, and stores them under a
+    reserved <code>resource.</code> prefix in the same flat scores object. Thresholds gate
+    on either kind through identical plumbing.
+  </p>
+
+  <h2>The sandbox</h2>
+  <p>
+    A model's <code>predict()</code> runs in a fresh subprocess started with a scrubbed
+    environment — no database key, no blob store key, no LLM key. Unpickling is arbitrary
+    code execution, and this process is the containment boundary for it. There is a test
+    that sets a credential in the parent and asserts the child cannot read it.
+  </p>
+
+  <h2>Serving</h2>
+  <p>
+    Each promoted version becomes its own container image, built from the library versions
+    the SDK captured on the training machine. A pickle is only reliably loadable against
+    the versions that wrote it, so a single shared serving image was never an option — and
+    the capture has to happen client-side, since introspecting on the server would
+    faithfully describe the wrong machine.
+  </p>
+  <p>
+    The artifact is copied into the image, which means the serving container needs no
+    credentials at all — the same principle the eval sandbox reached from the other
+    direction.
+  </p>
+
+  <h3>Two runtimes, one interface</h3>
+  <p>
+    <code>DockerRuntime</code> and <code>FargateRuntime</code> both implement
+    <code>build</code> / <code>run</code> / <code>stop</code>. <code>run()</code> returns
+    the endpoint it actually came up on, so nothing above that layer assumes
+    <code>localhost</code>.
+  </p>
+
+  <h3>Deploy is non-fatal</h3>
+  <p>
+    Deployment and monitoring both run <em>after</em> a version is already promoted. A
+    build failure records its reason on a <code>failed</code> deployment row and returns
+    <code>deployment: null</code> — it never retroactively fails a promotion that
+    genuinely succeeded.
+  </p>
+
+  <h2>Monitoring</h2>
+  <p>
+    Falcon needs no LLM. When Fury promotes a version, the eval run that justified it
+    already holds measured latency percentiles, throughput, memory, and quality scores, so
+    the baseline is lifted from evidence rather than guessed.
+  </p>
+  <p>
+    Two checks run inline, triggered by the events that already move data — no scheduler,
+    no poller. The systemic check compares a version's trailing 15 minutes against the 15
+    before it. The quality check re-runs Nat's own scoring against accumulated labels,
+    using the exact thresholds frozen at promotion.
+  </p>
+
+  <div class="note">
+    <strong>Deliberately not compared:</strong> live traffic is never measured against the
+    sandbox eval numbers. Those are cold, single-client figures that always look better
+    than production, and comparing against them would manufacture false alarms.
+  </div>
+
+  <h2>Limits this version accepts</h2>
+
+  <div class="note warn">
+    <strong>No authentication on any route.</strong> Every endpoint is open, including
+    <code>/ingest</code>, which accepts arbitrary pickles. Run this locally or behind your
+    own network boundary.
+  </div>
+
+  <ul>
+    <li>
+      <strong>Resource metrics are feasibility numbers.</strong> Single-process,
+      single-client, cold sandbox — not production p99.
+    </li>
+    <li>
+      <strong>Single replica.</strong> No autoscaling, no idle shutdown, no load balancer.
+      A local deployment lives and dies with the machine running Verity.
+    </li>
+    <li>
+      <strong>Promotion is not comparative.</strong> A version that clears its own
+      thresholds replaces the incumbent even if the incumbent scored better. Both keep
+      their evidence, so it is visible — but it is not prevented.
+    </li>
+    <li>
+      <strong>Tabular and classical ML only</strong> — scikit-learn, XGBoost, LightGBM.
+    </li>
+    <li>
+      <strong>Not built yet:</strong> input drift detection, the agent audit trail,
+      autonomous retraining.
+    </li>
+  </ul>
+
+  <footer>
+    Verity v1.0.0 · <a href="https://github.com/Koustav-github/Verity">Source on GitHub</a>
+  </footer>
+</main>
+
+</body>
+</html>

@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Quickstart — Verity</title>
+<meta name="description" content="Run Verity locally: install the SDK, configure the server, upload a model, and call it.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+
+<header class="masthead">
+  <div class="masthead-inner">
+    <a class="wordmark" href="index.html">Verity</a>
+    <span class="tagline">Model registry</span>
+    <span class="masthead-meta">Hawkeye · Nat · Fury · Falcon</span>
+  </div>
+</header>
+
+<nav>
+  <div class="nav-inner">
+    <a href="index.html">Overview</a>
+    <a href="quickstart.html" aria-current="page">Quickstart</a>
+    <a href="architecture.html">Architecture</a>
+    <a href="api.html">API</a>
+  </div>
+</nav>
+
+<main class="page">
+  <p class="eyebrow">Quickstart</p>
+  <h1>From a trained model to a served one.</h1>
+  <p class="lede">
+    Verity runs on your own infrastructure — your S3 bucket, your database, your LLM key.
+    Nothing is hosted for you, and no credentials ship with the repo.
+  </p>
+
+  <h2>1. What you need</h2>
+  <div class="table-scroll">
+    <table>
+      <tr><th>Requirement</th><th>Why</th></tr>
+      <tr><td>Python 3.12</td><td>Server and SDK</td></tr>
+      <tr><td>Docker</td><td>Builds and runs one container per promoted version</td></tr>
+      <tr><td>An S3 bucket</td><td>Stores model artifacts and evaluation fixtures</td></tr>
+      <tr><td>A Supabase project</td><td>Relational store for every pipeline row</td></tr>
+      <tr><td>An OpenAI-compatible LLM key</td><td>Hawkeye and Nat; defaults to Groq</td></tr>
+    </table>
+  </div>
+
+  <h2>2. Configure the server</h2>
+  <p>Create <code>server/.env</code>:</p>
+  <pre><code>S3_BUCKET=your-bucket
+S3_REGION=us-east-1
+
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_KEY=your-service-key
+SUPABASE_DB_URL=postgresql://...
+
+VERITY_LLM_API_KEY=your-key
+# Optional — defaults to Groq
+VERITY_LLM_BASE_URL=https://api.groq.com/openai/v1</code></pre>
+
+  <p>
+    AWS credentials are not read from this file. Boto3 resolves them through its standard
+    chain — environment variables, <code>~/.aws/credentials</code>, or an instance role.
+  </p>
+
+  <h2>3. Run it</h2>
+  <pre><code># Server
+cd server
+uv sync --extra dev
+uv run alembic upgrade head
+uv run uvicorn main:app --port 8000
+
+# Frontend (optional, in a second shell)
+cd client
+npm install
+npm run dev</code></pre>
+
+  <div class="note">
+    <strong>Note:</strong> <code>uv sync</code> without <code>--extra dev</code> prunes
+    pytest from the venv, and <code>uv run pytest</code> then silently falls back to a
+    different interpreter. Always pass the flag.
+  </div>
+
+  <h2>4. Install the SDK</h2>
+  <pre><code>pip install -e ./verity</code></pre>
+
+  <h2>5. Upload a model</h2>
+  <p>
+    Pass a fitted model and a holdout set. <code>name</code> is what groups versions —
+    uploading again under the same name creates a new version of the same model.
+  </p>
+
+  <pre><code>from verity import assemble
+
+result = assemble(
+    model,                       # any fitted sklearn / XGBoost / LightGBM estimator
+    user_id="demo-user",
+    name="titanic-survival-classifier",
+    endpoint="http://127.0.0.1:8000",
+    X_test=X_test,
+    y_test=y_test,
+    alert_email="ops@example.com",   # optional
+)
+
+print(result["status"])              # production | staging_failed | pending
+print(result["model_version_id"])</code></pre>
+
+  <p>Or from the command line:</p>
+  <pre><code>verity --demo --user-id demo-user --name demo-classifier</code></pre>
+
+  <div class="note">
+    <strong>First upload is slow.</strong> It includes a full Docker image build — around
+    three minutes cold. Later versions on the same dependency set reuse the cached pip
+    layer and take seconds.
+  </div>
+
+  <h2>6. Call the model</h2>
+  <p>
+    Once a version reaches <code>production</code>, call it through Verity's proxy. This
+    address is stable across promotions and is what records telemetry.
+  </p>
+
+  <pre><code>import requests
+
+response = requests.post(
+    "http://127.0.0.1:8000/users/demo-user/models/titanic-survival-classifier/predict",
+    json={"instances": [
+        {"Pclass": 3, "Sex": 0, "Age": 22, "Fare": 7.25, "Embarked": 2.0, "Relatives": 1}
+    ]},
+)
+print(response.json())
+# {"predictions": [...], "probabilities": [...], "prediction_id": "pred_..."}</code></pre>
+
+  <p>
+    If the model was fitted on a DataFrame, <code>instances</code> takes objects keyed by
+    column name and the recorded column order wins. If it was fitted on a bare array, send
+    lists of values instead.
+  </p>
+
+  <h2>7. Report outcomes (optional)</h2>
+  <p>
+    When ground truth arrives later, report it back. Once 30 labels accumulate, Falcon
+    re-runs the exact metric set and thresholds frozen at promotion time and raises a
+    quality alert if the model has drifted below them.
+  </p>
+
+  <pre><code>requests.post(
+    f"http://127.0.0.1:8000/predictions/{prediction_id}/outcomes",
+    json={"outcomes": [{"index": 0, "actual": 1}]},
+)</code></pre>
+
+  <h2>Serving on Fargate instead</h2>
+  <pre><code>VERITY_CONTAINER_RUNTIME=fargate
+VERITY_FARGATE_ECR_URI=...
+VERITY_FARGATE_EXECUTION_ROLE_ARN=...
+VERITY_FARGATE_SECURITY_GROUP=...
+VERITY_FARGATE_SUBNETS=subnet-a,subnet-b</code></pre>
+
+  <p>
+    Nothing else changes. Both runtimes sit behind the same interface, and the deployment
+    row records whichever endpoint the task actually came up on.
+  </p>
+
+  <footer>
+    Verity v1.0.0 · <a href="https://github.com/Koustav-github/Verity">Source on GitHub</a>
+  </footer>
+</main>
+
+</body>
+</html>

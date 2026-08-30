@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>API — Verity</title>
+<meta name="description" content="Verity's Python SDK and HTTP routes.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+
+<header class="masthead">
+  <div class="masthead-inner">
+    <a class="wordmark" href="index.html">Verity</a>
+    <span class="tagline">Model registry</span>
+    <span class="masthead-meta">Hawkeye · Nat · Fury · Falcon</span>
+  </div>
+</header>
+
+<nav>
+  <div class="nav-inner">
+    <a href="index.html">Overview</a>
+    <a href="quickstart.html">Quickstart</a>
+    <a href="architecture.html">Architecture</a>
+    <a href="api.html" aria-current="page">API</a>
+  </div>
+</nav>
+
+<main class="page">
+  <p class="eyebrow">API</p>
+  <h1>SDK and HTTP reference.</h1>
+
+  <h2>Python SDK</h2>
+
+  <h3><code>assemble()</code></h3>
+  <p>Uploads a trained model for identification, evaluation, registration, and serving.</p>
+
+  <pre><code>from verity import assemble
+
+assemble(
+    model,                    # a fitted estimator
+    user_id: str,
+    name: str,                # groups versions; same name = new version
+    endpoint: str = "http://localhost:8000",
+    X_test=None,
+    y_test=None,
+    fixture: tuple | None = None,
+    alert_email: str | None = None,
+    timeout: float = 600.0,
+) -> dict</code></pre>
+
+  <div class="table-scroll">
+    <table>
+      <tr><th>Argument</th><th>Notes</th></tr>
+      <tr><td><code>name</code></td><td>The only thing deciding whether an upload is a new model or a new version of an existing one</td></tr>
+      <tr><td><code>X_test</code> / <code>y_test</code></td><td>The shortcut for a labeled holdout. Omit both and the model is stored and identified but never evaluated — status stays <code>pending</code></td></tr>
+      <tr><td><code>fixture</code></td><td>A <code>(payload, descriptor)</code> pair for fixture kinds with no keyword shortcut</td></tr>
+      <tr><td><code>alert_email</code></td><td>Set once, on first registration. A later version's upload never silently changes who gets notified</td></tr>
+      <tr><td><code>timeout</code></td><td>Defaults to 600s because a first deploy includes a cold Docker build</td></tr>
+    </table>
+  </div>
+
+  <p>Returns the full record: <code>model_version_id</code>, <code>status</code>, <code>manifest</code>, <code>eval_run</code>, <code>deployment</code>, <code>monitoring_config</code>.</p>
+
+  <h3><code>monitor()</code></h3>
+  <p>
+    For models you serve yourself. Wraps the model so predictions are reported back to
+    Verity; <code>.predict()</code> behaves identically.
+  </p>
+
+  <pre><code>from verity import monitor
+
+wrapped = monitor(model, model_version_id="mv_...")
+wrapped.predict(X)</code></pre>
+
+  <p>
+    Telemetry can never be why inference fails or slows: reporting happens on a background
+    thread, drops on a full queue, and if the model raises, the caller gets that exact
+    exception back — recorded, then re-raised unchanged.
+  </p>
+
+  <h3>CLI</h3>
+  <pre><code>verity &lt;model_path&gt; --user-id U --name N [--test-set PATH] [--endpoint URL]
+verity --demo --user-id U --name N</code></pre>
+
+  <h2>HTTP routes</h2>
+
+  <h3>Predict</h3>
+  <pre><code>POST /users/{user_id}/models/{name}/predict</code></pre>
+  <p>
+    Resolves whichever version is currently in production and forwards to its container.
+    Stable across promotions, and the only path that records telemetry.
+  </p>
+
+  <pre><code>{"instances": [{"feature": 1.0, ...}]}   // named-feature models
+{"instances": [[1.0, 2.0, ...]]}         // positional models</code></pre>
+
+  <p>Returns <code>predictions</code>, <code>probabilities</code>, and a <code>prediction_id</code>.</p>
+
+  <div class="table-scroll">
+    <table>
+      <tr><th>Status</th><th>Means</th></tr>
+      <tr><td>404</td><td>No production version under that name — or promoted but not deployed. The two are distinguished in the message</td></tr>
+      <tr><td>422</td><td>Instance shape mismatch; the message names the exact features expected</td></tr>
+      <tr><td>502</td><td>The container did not answer</td></tr>
+    </table>
+  </div>
+
+  <h3>Registry</h3>
+  <div class="table-scroll">
+    <table>
+      <tr><th>Route</th><th>Returns</th></tr>
+      <tr><td><code>GET /users/{user_id}/models</code></td><td>Every model for a user, with its production version id</td></tr>
+      <tr><td><code>GET /models/{model_id}/versions</code></td><td>That model's versions, newest first</td></tr>
+      <tr><td><code>GET /model_versions/{id}</code></td><td>Full evidence: manifest, eval run, deployment, monitoring config</td></tr>
+      <tr><td><code>GET /model_versions/{id}/download-urls</code></td><td>Presigned S3 links for artifact and fixture, 15-minute expiry</td></tr>
+    </table>
+  </div>
+
+  <p>
+    The list routes return an empty list for an unknown id rather than 404 — there is no
+    user table to check existence against. The detail routes do 404, since those name one
+    specific thing.
+  </p>
+
+  <h3>Observability</h3>
+  <div class="table-scroll">
+    <table>
+      <tr><th>Route</th><th>Returns</th></tr>
+      <tr><td><code>GET /models/{version_id}/telemetry</code></td><td>Request count, error rate, latency percentiles, and recent calls</td></tr>
+      <tr><td><code>GET /models/{version_id}/alerts</code></td><td>Alerts Falcon has raised for this version</td></tr>
+      <tr><td><code>POST /telemetry</code></td><td>Batch ingest, used by <code>verity.monitor()</code></td></tr>
+      <tr><td><code>POST /predictions/{id}/outcomes</code></td><td>Report ground truth for a past prediction</td></tr>
+    </table>
+  </div>
+
+  <div class="note">
+    <strong>Traces omit payloads on purpose.</strong> Inputs and predictions are recorded
+    server-side, but the telemetry route projects only timing and status. Serving real
+    production inputs through an unauthenticated endpoint is not something v1 does.
+  </div>
+
+  <h3>Ingest</h3>
+  <pre><code>POST /ingest    # multipart: model, sha256, user_id, name,
+                #            fixture, fixture_descriptor, environment</code></pre>
+  <p>
+    Use the SDK rather than calling this directly — it handles serialization, hashing, and
+    environment capture. A byte-identical re-upload under the same name is a true no-op
+    and returns the existing record with <code>deduplicated: true</code>.
+  </p>
+
+  <footer>
+    Verity v1.0.0 · <a href="https://github.com/Koustav-github/Verity">Source on GitHub</a>
+  </footer>
+</main>
+
+</body>
+</html>

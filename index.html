@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Verity — an agentic MLOps pipeline</title>
+<meta name="description" content="Verity turns a trained model into a served, evaluated, monitored one from a single assemble() call. Four agents: Hawkeye, Nat, Fury, Falcon.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+
+<header class="masthead">
+  <div class="masthead-inner">
+    <a class="wordmark" href="index.html">Verity</a>
+    <span class="tagline">Model registry</span>
+    <span class="masthead-meta">Hawkeye · Nat · Fury · Falcon</span>
+  </div>
+</header>
+
+<nav>
+  <div class="nav-inner">
+    <a href="index.html" aria-current="page">Overview</a>
+    <a href="quickstart.html">Quickstart</a>
+    <a href="architecture.html">Architecture</a>
+    <a href="api.html">API</a>
+  </div>
+</nav>
+
+<main class="page">
+  <p class="eyebrow">Overview</p>
+  <h1>One call, and the model is evaluated, served, and watched.</h1>
+  <p class="lede">
+    Verity is an MLOps pipeline built around four agents. You hand it a trained model and
+    a holdout set; it identifies the model, decides what to measure, gates promotion on
+    the result, builds and runs a container for it, and monitors the traffic that follows.
+  </p>
+
+  <pre><code>from verity import assemble
+
+result = assemble(
+    model,
+    user_id="demo-user",
+    name="titanic-survival-classifier",
+    X_test=X_test,
+    y_test=y_test,
+)</code></pre>
+
+  <p>
+    That single call runs the whole loop. A model that clears its thresholds is promoted
+    to <code>production</code> and served; one that misses stops at
+    <code>staging_failed</code> with the specific thresholds it failed recorded against
+    it.
+  </p>
+
+  <h2>The four agents</h2>
+
+  <div class="agents">
+    <div class="agent">
+      <span class="agent-name">Hawkeye</span>
+      <span>
+        Identifies the model — framework, class, task type — and introspects its input
+        surface so the served API can be generated rather than guessed.
+      </span>
+    </div>
+    <div class="agent">
+      <span class="agent-name">Nat</span>
+      <span>
+        Resolves a task-appropriate metric set and thresholds, runs the model in a
+        credential-free sandbox, scores it, and returns a verdict.
+      </span>
+    </div>
+    <div class="agent">
+      <span class="agent-name">Fury</span>
+      <span>
+        Gates promotion on that verdict, registers the version under its model name, and
+        archives the version it replaces.
+      </span>
+    </div>
+    <div class="agent">
+      <span class="agent-name">Falcon</span>
+      <span>
+        Configures monitoring from the eval evidence, then detects anomalies in live
+        traffic and raises alerts.
+      </span>
+    </div>
+  </div>
+
+  <h2>Agents configure, pipelines execute</h2>
+  <p>
+    This is the principle the whole design follows. An LLM picks the configuration
+    <em>once</em> — which metrics suit this task, what thresholds are reasonable for this
+    dataset. Everything after that is deterministic: the scoring is plain scikit-learn,
+    the threshold comparison is plain code, and the numbers are frozen onto an
+    append-only row as they were applied.
+  </p>
+  <p>
+    A later change to how thresholds are chosen can never retroactively alter what a past
+    gate decided.
+  </p>
+
+  <h2>Gating on more than accuracy</h2>
+  <p>
+    Nat measures latency percentiles, throughput, peak memory, and CPU time alongside
+    quality metrics, and a threshold on either kind gates identically. A model that is
+    accurate but too slow to serve does not pass — which, for a pipeline whose job is to
+    decide whether something is worth serving, is arguably the more load-bearing half.
+  </p>
+
+  <div class="note">
+    <strong>Stated plainly:</strong> those resource numbers come from a single-process,
+    single-client, cold sandbox. They answer <em>“can this be served at all”</em>, not
+    “how does it behave under production load”.
+  </div>
+
+  <h2>What ships in v1</h2>
+  <ul>
+    <li>The four-agent pipeline, fully automatic on every upload</li>
+    <li>One container image per promoted version, built from the captured training environment</li>
+    <li>Local Docker or AWS ECS Fargate serving, behind the same runtime interface</li>
+    <li>A stable predict route that survives promotions</li>
+    <li>A registry UI for browsing versions and their evidence</li>
+    <li>Verified end to end on scikit-learn, XGBoost, and LightGBM</li>
+  </ul>
+
+  <p>
+    <a href="quickstart.html">Start here →</a>
+  </p>
+
+  <footer>
+    Verity v1.0.0 · <a href="https://github.com/Koustav-github/Verity">Source on GitHub</a>
+  </footer>
+</main>
+
+</body>
+</html>

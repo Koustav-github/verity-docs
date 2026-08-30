@@ -1,0 +1,325 @@
+/* Verity docs — the same paper-ledger palette the app uses, so the docs and the
+   product do not look like two different products. No build step: this is one
+   stylesheet and a handful of static pages, which is all GitHub Pages needs. */
+
+:root {
+  --ink: #14171c;
+  --ink-soft: #4a4f58;
+  --paper: #ece9e2;
+  --paper-raised: #f5f3ee;
+  --rule: #c9c5bc;
+  --brass: #8a6a2e;
+  --pass: #2f6e4f;
+  --fail: #8b3a3a;
+
+  --sans: "IBM Plex Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--sans);
+  font-size: 16px;
+  line-height: 1.6;
+}
+
+::selection {
+  background: var(--brass);
+  color: var(--paper);
+}
+
+:focus-visible {
+  outline: 2px solid var(--brass);
+  outline-offset: 2px;
+}
+
+a {
+  color: var(--ink);
+  text-decoration-color: var(--brass);
+  text-underline-offset: 3px;
+}
+
+a:hover {
+  color: var(--brass);
+}
+
+/* ---------- masthead + nav ---------- */
+
+.masthead {
+  border-bottom: 2px solid var(--ink);
+  background: var(--paper-raised);
+}
+
+.masthead-inner,
+.nav-inner,
+.page {
+  margin: 0 auto;
+  width: 100%;
+  max-width: 54rem;
+  padding-left: 1.25rem;
+  padding-right: 1.25rem;
+}
+
+.masthead-inner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.35rem 1rem;
+  padding-top: 0.85rem;
+  padding-bottom: 0.85rem;
+}
+
+.wordmark {
+  font-family: var(--mono);
+  font-size: 1.75rem;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+  text-decoration: none;
+  color: var(--ink);
+}
+
+.wordmark:hover {
+  color: var(--ink);
+}
+
+.tagline {
+  font-size: 0.7rem;
+  letter-spacing: 0.25em;
+  text-transform: uppercase;
+  color: var(--brass);
+}
+
+.masthead-meta {
+  margin-left: auto;
+  font-size: 0.75rem;
+  color: var(--ink-soft);
+}
+
+nav {
+  border-bottom: 1px solid var(--rule);
+  background: var(--paper);
+}
+
+.nav-inner {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  padding-top: 0.6rem;
+  padding-bottom: 0.6rem;
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.nav-inner a {
+  border: 1px solid var(--rule);
+  padding: 0.3rem 0.7rem;
+  text-decoration: none;
+  color: var(--ink-soft);
+}
+
+.nav-inner a:hover {
+  border-color: var(--ink);
+  color: var(--ink);
+}
+
+.nav-inner a[aria-current="page"] {
+  border-color: var(--ink);
+  background: var(--ink);
+  color: var(--paper);
+}
+
+/* ---------- page ---------- */
+
+.page {
+  padding-top: 2.5rem;
+  padding-bottom: 4rem;
+}
+
+.eyebrow {
+  margin: 0;
+  font-size: 0.7rem;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  color: var(--brass);
+}
+
+h1 {
+  margin: 0.35rem 0 0;
+  font-family: var(--mono);
+  font-size: 1.9rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  line-height: 1.15;
+}
+
+h2 {
+  margin: 2.75rem 0 0.75rem;
+  padding-bottom: 0.4rem;
+  border-bottom: 2px solid var(--ink);
+  font-family: var(--mono);
+  font-size: 1.15rem;
+  font-weight: 700;
+}
+
+h3 {
+  margin: 1.75rem 0 0.5rem;
+  font-family: var(--mono);
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+
+.lede {
+  margin-top: 0.75rem;
+  font-size: 1.05rem;
+  color: var(--ink-soft);
+}
+
+p,
+li {
+  color: var(--ink);
+}
+
+code {
+  font-family: var(--mono);
+  font-size: 0.85em;
+  background: var(--paper-raised);
+  border: 1px solid var(--rule);
+  padding: 0.05em 0.3em;
+}
+
+pre {
+  overflow-x: auto;
+  margin: 0.9rem 0;
+  padding: 0.9rem 1rem;
+  background: var(--paper-raised);
+  border: 1px solid var(--rule);
+  border-left: 3px solid var(--brass);
+  font-family: var(--mono);
+  font-size: 0.82rem;
+  line-height: 1.55;
+}
+
+pre code {
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: inherit;
+}
+
+/* ---------- components ---------- */
+
+.agents {
+  margin: 1.25rem 0;
+  border: 1px solid var(--rule);
+}
+
+.agent {
+  display: grid;
+  grid-template-columns: 7.5rem 1fr;
+  gap: 1rem;
+  padding: 0.75rem 1rem;
+  background: var(--paper-raised);
+  border-bottom: 1px solid var(--rule);
+}
+
+.agent:last-child {
+  border-bottom: none;
+}
+
+.agent-name {
+  font-family: var(--mono);
+  font-weight: 700;
+  color: var(--brass);
+}
+
+@media (max-width: 34rem) {
+  .agent {
+    grid-template-columns: 1fr;
+    gap: 0.15rem;
+  }
+}
+
+table {
+  width: 100%;
+  margin: 1rem 0;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+th,
+td {
+  padding: 0.5rem 0.7rem;
+  text-align: left;
+  border-bottom: 1px solid var(--rule);
+  vertical-align: top;
+}
+
+th {
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--brass);
+  border-bottom: 2px solid var(--ink);
+}
+
+td code {
+  white-space: nowrap;
+}
+
+.table-scroll {
+  overflow-x: auto;
+}
+
+.note {
+  margin: 1.25rem 0;
+  padding: 0.85rem 1rem;
+  background: var(--paper-raised);
+  border: 1px solid var(--brass);
+  font-size: 0.9rem;
+}
+
+.note strong {
+  color: var(--brass);
+}
+
+.warn {
+  border-color: var(--fail);
+}
+
+.warn strong {
+  color: var(--fail);
+}
+
+footer {
+  margin-top: 3.5rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--rule);
+  font-size: 0.8rem;
+  color: var(--ink-soft);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
+}
